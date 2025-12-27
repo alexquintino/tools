@@ -177,8 +177,28 @@
         .type-system { background: #e3f2fd; color: #1976d2; }
         .type-assistant { background: #f3e5f5; color: #7b1fa2; }
         .type-result { background: #e8f5e9; color: #388e3c; }
+        .type-user { background: #fff3e0; color: #f57c00; }
         .type-tool { background: #fff3e0; color: #f57c00; }
         .type-default { background: #f5f5f5; color: #666; }
+
+        .tool-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 8px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 8px;
+            background: #ff9800;
+            color: white;
+        }
+
+        .tool-result-badge {
+            background: #4caf50;
+        }
+
+        .tool-error-badge {
+            background: #f44336;
+        }
 
         .text-preview {
             max-width: 400px;
@@ -310,6 +330,39 @@
             font-size: 11px;
             color: #555;
         }
+
+        .filter-container {
+            display: none;
+            padding: 20px 30px;
+            background: #fafafa;
+            border-bottom: 1px solid #e0e0e0;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .filter-container.visible {
+            display: flex;
+        }
+
+        .filter-input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        .filter-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .filter-label {
+            font-size: 13px;
+            color: #666;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
@@ -336,6 +389,10 @@
                 <div class="stat-value" id="sessionId" style="font-size: 14px;">-</div>
             </div>
             <div class="stat-item">
+                <div class="stat-label">Tool Calls</div>
+                <div class="stat-value" id="toolCalls">0</div>
+            </div>
+            <div class="stat-item">
                 <div class="stat-label">Total Cost</div>
                 <div class="stat-value" id="totalCost">$0.00</div>
             </div>
@@ -343,6 +400,11 @@
                 <div class="stat-label">Duration</div>
                 <div class="stat-value" id="totalDuration">0ms</div>
             </div>
+        </div>
+
+        <div class="filter-container" id="filterContainer">
+            <span class="filter-label">Filter:</span>
+            <input type="text" class="filter-input" id="filterInput" placeholder="Filter by tool name, event type, or content...">
         </div>
 
         <div class="table-container" id="tableContainer">
@@ -372,8 +434,11 @@
         const tableContainer = document.getElementById('tableContainer');
         const stats = document.getElementById('stats');
         const resetBtn = document.getElementById('resetBtn');
+        const filterContainer = document.getElementById('filterContainer');
+        const filterInput = document.getElementById('filterInput');
 
         let jsonData = [];
+        let filteredData = [];
 
         // Drag and drop handlers
         dropZone.addEventListener('click', () => fileInput.click());
@@ -401,6 +466,10 @@
 
         resetBtn.addEventListener('click', () => {
             location.reload();
+        });
+
+        filterInput.addEventListener('input', (e) => {
+            applyFilter(e.target.value);
         });
 
         function processFile(file) {
@@ -433,10 +502,46 @@
 
             dropZone.classList.add('loaded');
             stats.classList.add('visible');
+            filterContainer.classList.add('visible');
             tableContainer.classList.add('visible');
             resetBtn.classList.add('visible');
 
+            filteredData = jsonData;
             updateStats();
+            renderTable();
+        }
+
+        function applyFilter(searchTerm) {
+            if (!searchTerm) {
+                filteredData = jsonData;
+            } else {
+                const term = searchTerm.toLowerCase();
+                filteredData = jsonData.filter(item => {
+                    // Search in type
+                    if (item.type && item.type.toLowerCase().includes(term)) return true;
+                    if (item.subtype && item.subtype.toLowerCase().includes(term)) return true;
+
+                    // Search in tool names
+                    if (item.type === 'assistant' && item.message?.content) {
+                        const toolUses = item.message.content.filter(c => c.type === 'tool_use');
+                        if (toolUses.some(t => t.name.toLowerCase().includes(term))) return true;
+
+                        const textContent = item.message.content.find(c => c.type === 'text');
+                        if (textContent && textContent.text.toLowerCase().includes(term)) return true;
+                    }
+
+                    // Search in tool results
+                    if (item.type === 'user' && item.tool_use_result) {
+                        if (item.tool_use_result.stdout && item.tool_use_result.stdout.toLowerCase().includes(term)) return true;
+                        if (item.tool_use_result.stderr && item.tool_use_result.stderr.toLowerCase().includes(term)) return true;
+                    }
+
+                    // Search in result
+                    if (item.result && item.result.toLowerCase().includes(term)) return true;
+
+                    return false;
+                });
+            }
             renderTable();
         }
 
@@ -447,6 +552,16 @@
             if (systemEvent) {
                 document.getElementById('sessionId').textContent = systemEvent.session_id || '-';
             }
+
+            // Count tool calls
+            let toolCallCount = 0;
+            jsonData.forEach(item => {
+                if (item.type === 'assistant' && item.message?.content) {
+                    const toolUses = item.message.content.filter(c => c.type === 'tool_use');
+                    toolCallCount += toolUses.length;
+                }
+            });
+            document.getElementById('toolCalls').textContent = toolCallCount;
 
             const resultEvents = jsonData.filter(d => d.type === 'result');
             const totalCost = resultEvents.reduce((sum, e) => sum + (e.total_cost_usd || 0), 0);
@@ -459,7 +574,7 @@
         function renderTable() {
             tableBody.innerHTML = '';
 
-            jsonData.forEach((item, index) => {
+            filteredData.forEach((item, index) => {
                 const row = createRow(item, index);
                 tableBody.appendChild(row);
 
@@ -476,9 +591,36 @@
             const typeText = item.subtype ? `${item.type}/${item.subtype}` : item.type;
 
             let content = '';
+            let toolBadge = '';
+
             if (item.type === 'assistant' && item.message?.content) {
-                const textContent = item.message.content.find(c => c.type === 'text');
-                content = textContent ? textContent.text : 'No text content';
+                // Check for tool use
+                const toolUses = item.message.content.filter(c => c.type === 'tool_use');
+                if (toolUses.length > 0) {
+                    const toolNames = toolUses.map(t => t.name).join(', ');
+                    content = `Tools: ${toolNames}`;
+                    toolBadge = toolUses.map(t =>
+                        `<span class="tool-badge">${t.name}</span>`
+                    ).join('');
+                } else {
+                    // Text content
+                    const textContent = item.message.content.find(c => c.type === 'text');
+                    content = textContent ? textContent.text : 'No text content';
+                }
+            } else if (item.type === 'user' && item.message?.content) {
+                // Tool result
+                const toolResult = item.message.content.find(c => c.type === 'tool_result');
+                if (toolResult) {
+                    const isError = toolResult.is_error;
+                    const toolId = toolResult.tool_use_id;
+                    const resultPreview = typeof toolResult.content === 'string'
+                        ? toolResult.content.substring(0, 100)
+                        : 'Tool result';
+                    content = `Result: ${resultPreview}`;
+                    toolBadge = `<span class="tool-badge ${isError ? 'tool-error-badge' : 'tool-result-badge'}">
+                        ${isError ? 'ERROR' : 'RESULT'}
+                    </span>`;
+                }
             } else if (item.type === 'result') {
                 content = item.result || 'No result';
             } else if (item.type === 'system') {
@@ -493,7 +635,7 @@
             row.innerHTML = `
                 <td><span class="expand-icon">▶</span></td>
                 <td>${item._lineNumber}</td>
-                <td><span class="type-badge ${typeClass}">${typeText}</span></td>
+                <td><span class="type-badge ${typeClass}">${typeText}</span>${toolBadge}</td>
                 <td><div class="text-preview">${escapeHtml(content)}</div></td>
                 <td class="duration">${duration}</td>
                 <td class="cost">${cost}</td>
@@ -620,12 +762,96 @@
                 }
 
                 if (msg.content) {
+                    // Handle text content
                     const textContent = msg.content.find(c => c.type === 'text');
                     if (textContent) {
                         sections.push(`
                             <div class="detail-section" style="grid-column: 1 / -1;">
                                 <h4>Content</h4>
                                 <pre>${escapeHtml(textContent.text)}</pre>
+                            </div>
+                        `);
+                    }
+
+                    // Handle tool use
+                    const toolUses = msg.content.filter(c => c.type === 'tool_use');
+                    if (toolUses.length > 0) {
+                        toolUses.forEach((toolUse, idx) => {
+                            sections.push(`
+                                <div class="detail-section" style="grid-column: 1 / -1;">
+                                    <h4>Tool Call ${toolUses.length > 1 ? `#${idx + 1}: ` : ': '}${toolUse.name}</h4>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Tool Use ID:</span>
+                                        <span class="detail-value">${toolUse.id}</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <span class="detail-label">Input:</span>
+                                    </div>
+                                    <pre>${escapeHtml(JSON.stringify(toolUse.input, null, 2))}</pre>
+                                </div>
+                            `);
+                        });
+                    }
+                }
+            }
+
+            // Handle user messages (tool results)
+            if (item.type === 'user' && item.message?.content) {
+                const toolResult = item.message.content.find(c => c.type === 'tool_result');
+                if (toolResult) {
+                    sections.push(`
+                        <div class="detail-section">
+                            <h4>Tool Result</h4>
+                            <div class="detail-item">
+                                <span class="detail-label">Tool Use ID:</span>
+                                <span class="detail-value">${toolResult.tool_use_id}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Is Error:</span>
+                                <span class="detail-value">${toolResult.is_error ? 'Yes' : 'No'}</span>
+                            </div>
+                        </div>
+                    `);
+
+                    if (item.tool_use_result) {
+                        const tur = item.tool_use_result;
+                        sections.push(`
+                            <div class="detail-section">
+                                <h4>Execution Details</h4>
+                                <div class="detail-item">
+                                    <span class="detail-label">Interrupted:</span>
+                                    <span class="detail-value">${tur.interrupted ? 'Yes' : 'No'}</span>
+                                </div>
+                                ${tur.isImage ? '<div class="detail-item"><span class="detail-label">Type:</span><span class="detail-value">Image</span></div>' : ''}
+                            </div>
+                        `);
+
+                        if (tur.stdout) {
+                            sections.push(`
+                                <div class="detail-section" style="grid-column: 1 / -1;">
+                                    <h4>STDOUT</h4>
+                                    <pre>${escapeHtml(tur.stdout)}</pre>
+                                </div>
+                            `);
+                        }
+
+                        if (tur.stderr) {
+                            sections.push(`
+                                <div class="detail-section" style="grid-column: 1 / -1;">
+                                    <h4>STDERR</h4>
+                                    <pre style="background: #fee; color: #c00;">${escapeHtml(tur.stderr)}</pre>
+                                </div>
+                            `);
+                        }
+                    } else {
+                        // Show content for non-bash tools
+                        const content = typeof toolResult.content === 'string'
+                            ? toolResult.content
+                            : JSON.stringify(toolResult.content, null, 2);
+                        sections.push(`
+                            <div class="detail-section" style="grid-column: 1 / -1;">
+                                <h4>Output</h4>
+                                <pre>${escapeHtml(content)}</pre>
                             </div>
                         `);
                     }
