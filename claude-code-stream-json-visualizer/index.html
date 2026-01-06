@@ -64,6 +64,166 @@
             display: none;
         }
 
+        .input-options {
+            padding: 20px 30px;
+            text-align: center;
+        }
+
+        .input-options.loaded {
+            display: none;
+        }
+
+        .option-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .option-btn {
+            background: white;
+            border: 2px solid #667eea;
+            color: #667eea;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        .option-btn:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .paste-container {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            flex-direction: column;
+        }
+
+        .paste-container.visible {
+            display: flex;
+        }
+
+        .paste-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .paste-header h3 {
+            margin: 0;
+            font-size: 18px;
+            color: #333;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: #999;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .close-btn:hover {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .paste-textarea {
+            flex: 1;
+            margin: 20px 30px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            resize: none;
+        }
+
+        .paste-textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .paste-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            padding: 20px 30px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .action-btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        .cancel-btn {
+            background: #f0f0f0;
+            color: #666;
+        }
+
+        .cancel-btn:hover {
+            background: #e0e0e0;
+        }
+
+        .submit-btn {
+            background: #667eea;
+            color: white;
+        }
+
+        .submit-btn:hover {
+            background: #5568d3;
+        }
+
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        .overlay.visible {
+            display: block;
+        }
+
         .drop-zone-icon {
             font-size: 48px;
             margin-bottom: 15px;
@@ -379,6 +539,25 @@
             <input type="file" id="fileInput" accept=".jsonl,.json" style="display: none;">
         </div>
 
+        <div class="input-options" id="inputOptions">
+            <div class="option-buttons">
+                <button class="option-btn" id="loadSampleBtn">📄 Load Sample Data</button>
+                <button class="option-btn" id="pasteBtn">📋 Paste JSONL</button>
+            </div>
+        </div>
+
+        <div class="paste-container" id="pasteContainer">
+            <div class="paste-header">
+                <h3>Paste JSONL Content</h3>
+                <button class="close-btn" id="closePasteBtn">✕</button>
+            </div>
+            <textarea class="paste-textarea" id="pasteTextarea" placeholder="Paste your JSONL content here (one JSON object per line)..."></textarea>
+            <div class="paste-actions">
+                <button class="action-btn cancel-btn" id="cancelPasteBtn">Cancel</button>
+                <button class="action-btn submit-btn" id="submitPasteBtn">Analyze</button>
+            </div>
+        </div>
+
         <div class="stats" id="stats">
             <div class="stat-item">
                 <div class="stat-label">Total Events</div>
@@ -426,6 +605,7 @@
     </div>
 
     <button class="reset-btn" id="resetBtn">Load New File</button>
+    <div class="overlay" id="overlay"></div>
 
     <script>
         const dropZone = document.getElementById('dropZone');
@@ -436,6 +616,15 @@
         const resetBtn = document.getElementById('resetBtn');
         const filterContainer = document.getElementById('filterContainer');
         const filterInput = document.getElementById('filterInput');
+        const inputOptions = document.getElementById('inputOptions');
+        const loadSampleBtn = document.getElementById('loadSampleBtn');
+        const pasteBtn = document.getElementById('pasteBtn');
+        const pasteContainer = document.getElementById('pasteContainer');
+        const pasteTextarea = document.getElementById('pasteTextarea');
+        const closePasteBtn = document.getElementById('closePasteBtn');
+        const cancelPasteBtn = document.getElementById('cancelPasteBtn');
+        const submitPasteBtn = document.getElementById('submitPasteBtn');
+        const overlay = document.getElementById('overlay');
 
         let jsonData = [];
         let filteredData = [];
@@ -472,6 +661,66 @@
             applyFilter(e.target.value);
         });
 
+        loadSampleBtn.addEventListener('click', () => {
+            loadSampleData();
+        });
+
+        pasteBtn.addEventListener('click', () => {
+            showPasteDialog();
+        });
+
+        closePasteBtn.addEventListener('click', () => {
+            hidePasteDialog();
+        });
+
+        cancelPasteBtn.addEventListener('click', () => {
+            hidePasteDialog();
+        });
+
+        submitPasteBtn.addEventListener('click', () => {
+            processPastedContent();
+        });
+
+        overlay.addEventListener('click', () => {
+            hidePasteDialog();
+        });
+
+        function showPasteDialog() {
+            pasteContainer.classList.add('visible');
+            overlay.classList.add('visible');
+            pasteTextarea.value = '';
+            pasteTextarea.focus();
+        }
+
+        function hidePasteDialog() {
+            pasteContainer.classList.remove('visible');
+            overlay.classList.remove('visible');
+        }
+
+        function processPastedContent() {
+            const content = pasteTextarea.value.trim();
+            if (!content) {
+                alert('Please paste some JSONL content');
+                return;
+            }
+            hidePasteDialog();
+            parseJSONL(content);
+        }
+
+        async function loadSampleData() {
+            try {
+                const response = await fetch('sample.jsonl');
+                if (!response.ok) {
+                    throw new Error('Failed to load sample data');
+                }
+                const content = await response.text();
+                parseJSONL(content);
+            } catch (error) {
+                console.error('Error loading sample data:', error);
+                alert('Failed to load sample data. Make sure sample.jsonl exists in the same directory.');
+            }
+        }
+
         function processFile(file) {
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -501,6 +750,7 @@
             if (jsonData.length === 0) return;
 
             dropZone.classList.add('loaded');
+            inputOptions.classList.add('loaded');
             stats.classList.add('visible');
             filterContainer.classList.add('visible');
             tableContainer.classList.add('visible');
